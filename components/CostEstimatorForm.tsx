@@ -1,9 +1,10 @@
 
 import React from 'react';
 import Select, { SingleValue, StylesConfig } from 'react-select';
-import { EstimationInputs } from '../types';
-import { COUNTRIES, DURATIONS, COLORS } from '../constants';
-import { Info, Lock, Calculator, Copy } from 'lucide-react';
+import { EstimationInputs, Country } from '../types';
+import { COLORS } from '../constants';
+import { Info, Lock, Calculator, Copy, Loader2 } from 'lucide-react';
+import { useConfig } from '../hooks/useEstimatorQueries';
 
 interface Props {
   inputs: EstimationInputs;
@@ -12,8 +13,31 @@ interface Props {
 }
 
 const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) => {
-  const countryOptions = COUNTRIES.map(c => ({ value: c, label: c }));
-  const durationOptions = DURATIONS.map(d => ({ value: d, label: `${d} months` }));
+  const { data: config, isLoading, error } = useConfig();
+
+  // Transform countries from API to select options
+  const countryOptions = React.useMemo(() => {
+    if (!config?.countries) return [];
+    return config.countries.map((country: Country) => ({
+      value: country.name,
+      label: `${country.name} (${country.code})`,
+      country: country, // Store full country object for reference
+    }));
+  }, [config?.countries]);
+
+  // Transform durations from API to select options
+  const durationOptions = React.useMemo(() => {
+    if (!config?.durations) return [];
+    return config.durations.map((d: number) => ({
+      value: d,
+      label: `${d} months`,
+    }));
+  }, [config?.durations]);
+
+  // Find host country for currency display
+  const hostCountry = React.useMemo(() => {
+    return config?.countries.find((c: Country) => c.name === inputs.hostCountry);
+  }, [config?.countries, inputs.hostCountry]);
 
   const handleSelectChange = (name: keyof EstimationInputs) => (
     newValue: SingleValue<{ value: string | number; label: string }>
@@ -30,7 +54,9 @@ const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) =
     const { name, value } = e.target;
     setInputs(prev => ({
       ...prev,
-      [name]: Number(value)
+      [name]: name === 'dailyAllowance' || name === 'workingDaysPerMonth'
+        ? (value === '' ? undefined : Number(value))
+        : Number(value)
     }));
   };
 
@@ -58,10 +84,10 @@ const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) =
     }),
     option: (base, state) => ({
       ...base,
-      backgroundColor: state.isSelected 
-        ? COLORS.tealBlue 
-        : state.isFocused 
-          ? COLORS.pastelBlue 
+      backgroundColor: state.isSelected
+        ? COLORS.tealBlue
+        : state.isFocused
+          ? COLORS.pastelBlue
           : 'white',
       color: state.isSelected ? 'white' : COLORS.darkIndigo,
       fontSize: '0.875rem',
@@ -92,6 +118,23 @@ const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) =
     }),
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="animate-spin text-[#40AEBC]" size={32} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+        <p className="font-semibold">Error loading configuration</p>
+        <p className="text-sm mt-1">{error instanceof Error ? error.message : 'Failed to load countries and durations'}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -102,6 +145,7 @@ const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) =
             options={countryOptions}
             value={countryOptions.find(o => o.value === inputs.homeCountry)}
             onChange={handleSelectChange('homeCountry')}
+            isLoading={isLoading}
           />
         </div>
 
@@ -112,13 +156,18 @@ const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) =
             options={countryOptions}
             value={countryOptions.find(o => o.value === inputs.hostCountry)}
             onChange={handleSelectChange('hostCountry')}
+            isLoading={isLoading}
           />
-          <p className="text-[10px] text-[#83849E] mt-1.5 uppercase tracking-wider font-medium">Tax rate: up to 25% | Currency: BRL</p>
+          {hostCountry && (
+            <p className="text-[10px] text-[#83849E] mt-1.5 uppercase tracking-wider font-medium">
+              Currency: {hostCountry.currency}
+            </p>
+          )}
         </div>
 
         <div>
           <InputLabel label="Monthly Salary (EUR)" />
-          <input 
+          <input
             type="number"
             name="monthlySalary"
             value={inputs.monthlySalary}
@@ -140,28 +189,30 @@ const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) =
         <div>
           <InputLabel label="Daily Allowance (EUR)" />
           <div className="relative">
-            <input 
+            <input
               type="number"
               name="dailyAllowance"
-              value={inputs.dailyAllowance}
+              value={inputs.dailyAllowance ?? ''}
               onChange={handleInputChange}
               className="w-full p-2.5 bg-white border border-[#EEEEEE] rounded-lg text-[#181C31] text-sm focus:ring-2 focus:ring-[#40AEBC] focus:border-[#40AEBC] outline-none transition-all"
             />
             <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#EEEEEE]" />
           </div>
-          <div className="mt-2 space-y-0.5">
-            <p className="text-[10px] text-[#83849E]">Basis: {inputs.homeCountry} destination rate for {inputs.hostCountry}.</p>
-            <p className="text-[10px] text-[#83849E]">Daily allowance locked at €{inputs.dailyAllowance.toFixed(2)}.</p>
-            <p className="text-[10px] text-[#83849E]">Source: <span className="text-[#40AEBC] cursor-pointer font-semibold">Finnish Tax Admin 2026</span></p>
-          </div>
+          {inputs.dailyAllowance && (
+            <div className="mt-2 space-y-0.5">
+              <p className="text-[10px] text-[#83849E]">Basis: {inputs.homeCountry} destination rate for {inputs.hostCountry}.</p>
+              <p className="text-[10px] text-[#83849E]">Daily allowance locked at €{inputs.dailyAllowance.toFixed(2)}.</p>
+              <p className="text-[10px] text-[#83849E]">Source: <span className="text-[#40AEBC] cursor-pointer font-semibold">Finnish Tax Admin 2026</span></p>
+            </div>
+          )}
         </div>
 
         <div>
           <InputLabel label="Working Days / Month" />
-          <input 
+          <input
             type="number"
             name="workingDaysPerMonth"
-            value={inputs.workingDaysPerMonth}
+            value={inputs.workingDaysPerMonth ?? 22}
             onChange={handleInputChange}
             className="w-full p-2.5 bg-white border border-[#EEEEEE] rounded-lg text-[#181C31] text-sm focus:ring-2 focus:ring-[#40AEBC] focus:border-[#40AEBC] outline-none transition-all"
           />
@@ -173,7 +224,7 @@ const CostEstimatorForm: React.FC<Props> = ({ inputs, setInputs, onGenerate }) =
           <Copy size={18} className="group-hover:scale-110 transition-transform" />
           Copy Estimate Summary
         </button>
-        <button 
+        <button
           onClick={onGenerate}
           className="w-full sm:w-auto px-8 py-3 custom-gradient rounded-lg text-white font-bold shadow-lg shadow-[#40AEBC]/20 hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
         >
