@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+body {
+  font-family: "Inter", sans-serif;
+  background-color: #edf5ff;
+}
+.custom-gradient {
+  background: linear-gradient(135deg, #181c31 0%, #3fafbe 100%);
+}
+.light-gradient {
+  background: linear-gradient(180deg, #edf5ff 0%, #f9fbff 100%);
+}
+/* Custom styles for react-select to match the brand */
+.react-select__control {
+  border-color: #eeeeee !important;
+  border-radius: 0.5rem !important;
+  padding: 0.15rem !important;
+}
+.react-select__control--is-focused {
+  border-color: #40aebc !important;
+  box-shadow: 0 0 0 2px rgba(64, 174, 188, 0.2) !important;
+}
